@@ -6,7 +6,16 @@ Assignment 4: The Hacked Memory
 ------------------------------------------------------------------------------
 Part 1: Study, Design, Log 
 
+Xv6, and any operating system in general, needs a way to have processes run independently of each other. In order to achieve this, each process has its own address space separate from all other processes' address spaces. Each user processes' address space is virtual and is translated into physical addresses through page tables. The page table of a process can be acccessed through the member pde_t pgdir member of the struct proc (2353).
 
+// How the first address space is created: entry to main
+
+// main
+When the bootstrap processor starts running C code in main() (1217), kinit1() is called (1219, defined at 3030), which frees the 4MB immediately following the kernel code's address space via freerange() (3034). kvmalloc() is called (1857), which calls setupkvm(), which allocates the kernel part of the page table, zeroes out the entire page table, checks to see if the PHYSTOP is not within DEVSPACE, and if it is, it then maps available pages to the kernel parts of the page table, including I/O space, kernel text, kernel memory, and device space. At the end it returns the allocated pgdir. In kvmalloc(), we then call switchkvm() (1866), which switches to the pgtable that we just created by setupkvm(). 
+
+Seginit() called at 1223 in main() sets up the global descriptor table to define the memory segments of each CPU. 
+
+// ctx switching, forking, etc.
 
 ------------------------------------------------------------------------------
 Part 2: NO moar NULL
