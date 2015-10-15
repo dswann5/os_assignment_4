@@ -5,17 +5,42 @@ Assignment 4: The Hacked Memory
 
 ------------------------------------------------------------------------------
 Part 1: Study, Design, Log 
-
+// Motivation
 Xv6, and any operating system in general, needs a way to have processes run independently of each other. In order to achieve this, each process has its own address space separate from all other processes' address spaces. Each user processes' address space is virtual and is translated into physical addresses through page tables. The page table of a process can be acccessed through the member pde_t pgdir member of the struct proc (2353).
 
 // How the first address space is created: entry to main
+The first address space is created in entry (1040). Here, page size extension is for 4MB pages is turned on, the address of the entrypgdir loaded into %cr3 (the register corresponding to the current pgdir), flags are set in %cr0 in order to enable paging, and the stack pointer is set. From here, we jmp to main().
 
 // main
-When the bootstrap processor starts running C code in main() (1217), kinit1() is called (1219, defined at 3030), which frees the 4MB immediately following the kernel code's address space via freerange() (3034). kvmalloc() is called (1857), which calls setupkvm(), which allocates the kernel part of the page table, zeroes out the entire page table, checks to see if the PHYSTOP is not within DEVSPACE, and if it is, it then maps available pages to the kernel parts of the page table, including I/O space, kernel text, kernel memory, and device space. At the end it returns the allocated pgdir. In kvmalloc(), we then call switchkvm() (1866), which switches to the pgtable that we just created by setupkvm(). 
+When the bootstrap processor starts running C code in main() (1217), kinit1() is called (1219, defined at 3030), which frees the 4MB immediately following the kernel code's address space via freerange() (3034). freerange() (3051) calls kfree() (3065), which adds the 4MB worth of page tables to freelist, a linked list of free pages. kvmalloc() is called (1857), which calls setupkvm(), which allocates the kernel part of the page table, zeroes out the entire page table, checks to see if the PHYSTOP is not within DEVSPACE, and if it is, it then maps available pages to the kernel parts of the page table, including I/O space, kernel text, kernel memory, and device space. At the end it returns the allocated pgdir. In kvmalloc(), we then call switchkvm() (1866), which switches to the pgtable that we just created by setupkvm(). 
 
 Seginit() called at 1223 in main() sets up the global descriptor table to define the memory segments of each CPU. 
 
+Startothers() called at 1236 starts the non-boot processors. It first writes the entry code to each processor's 0x7000 address which is unused at the moment. We load the binary for entryother.S into that address stored in the pointer variable called code. We then check for a cpu that hasn't been started yet. A stack is kalloc()'d to, we essentially pass entryother.S a place to enter and what page directory to use. Startothers() waits until the cpu has finished mpmain().
+
+Kinit2() is called after startothers() in main(). This is used to free the remaining pages in the kernel up to PHYSTOP in similar fashion as kinit1(). We need the lock, however, because other processors may be accessing kernel memory at the same time -- we want to prevent this by means of the lock. The Boot Processor (BP) does not need to worry since it is guaranteed to run in isolation by nature of only a single processor booting xv6.
+
+Userinit() is called after kinit2() in main(). Upon setting up the first process, we call setupkvm() in order to find an available page directory for the first process to have. We then load the binary for init into the process's pgdir. We need to do this since fork()/exec()'ing is not possible yet (there are no processes to call fork() or exec() at this point). Inituvm() (1903) kalloc()'s to a pointer mem. Mem is zeroed out in order to contain the binary for the init code. Mappages() maps physical addresses of pages to the beginning of virtual address 0 of pgdir. Memmove() actually moves the init binary into mem. Userinit() proceeds by setting up the process's trapframe, cwd, and state (RUNNABLE now).
+
+Mpmain() is the last thing called in main(). It calls scheduler() to start running processes.
+
 // ctx switching, forking, etc.
+Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. 
+
+
+// Modifications
+In Makefile, initcode offset should be 0x1000, not 0x0. Similar with _forktest and _% (ULIB)
+inituvm, instead of mapping to address 0, map to 4096.
+allocuvm, pgdir + 4096
+deallocuvm, make sure don't dealloc 0 to 4096
+copuvm, copy 1 page beyond start of process's page table to not have multiple pages of 0's. modify for copy-on-write as well
+walkpgdir, maybe we don't have to modify? Since our 0th page of every pgdir will be kalloc'd thus removed from freelist
+loaduvm, make sure not copying over first page of pgdir at all. Page fault if so.
+
+// Notable findings
+A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
+
+
 
 ------------------------------------------------------------------------------
 Part 2: NO moar NULL
