@@ -187,7 +187,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   if ((mem = kalloc()) == 0)
     panic("inituvm: cannot allocate memory");
   memset(mem, 0, PGSIZE);
-  if (mappages(pgdir, 0, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
+  if (mappages(pgdir, (void*)PGSIZE, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
     panic("inituvm: cannot create pagetable");
   memmove(mem, init, sz);
 }
