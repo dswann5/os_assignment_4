@@ -28,15 +28,34 @@ Mpmain() is the last thing called in main(). It calls scheduler() to start runni
 // ctx switching, forking, etc.
 Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. 
 
-
 // Modifications
-In Makefile, initcode offset should be 0x1000, not 0x0. Similar with _forktest and _% (ULIB)
-inituvm, instead of mapping to address 0, map to 4096.
-allocuvm, pgdir + 4096
-deallocuvm, make sure don't dealloc 0 to 4096
-copuvm, copy 1 page beyond start of process's page table to not have multiple pages of 0's. modify for copy-on-write as well
-walkpgdir, maybe we don't have to modify? Since our 0th page of every pgdir will be kalloc'd thus removed from freelist
-loaduvm, make sure not copying over first page of pgdir at all. Page fault if so.
+----------Part2----------
+    1) Makefile
+        a. Changed location of where code starts in the user address space for initcode. Instead of 0, start at 0x1000, which is the size of one page.
+        b. Changed location where code starts in the user address space for all user programs (ULIB). Instead of 0, start at 0x1000.
+        c. Changed location of where code starts in the user address space for forktest. Instead of 0, start at 0x1000.
+        d. We add a UPROG called _nulltest, a cutsom test we created to test that a trap 14 error happens when accessing the first page of a user program. We must also add nulltest.c to EXTRA.
+    2) exec.c
+        a. In the portion commented //Load program into memory, we want sz = PGSIZE, not 0. This is because we want to start loading the program into the 1st page as opposed to the 0th page, which we want to reserve for as a null space.
+    3) proc.c
+        a. userinit()
+            i. change p->sz to PGSIZE*2 since the process now has 2 pages, one for null, and one for the initcode.
+            ii. Set process's trapframe's stack pointer to PGSIZE*2 since the top of the stack is now offset by an additional page.
+            iii. Set the process's trapframe's instruction pointer to PGSIZE because we want to start at the page with initcode in it, which is offset by PGSIZE bytes.
+    4) syscall.c
+        a. fetchint()
+            i. check if addr is 0 in addition to checking if the address is within the process's address space.
+        b. fetchstr() 
+            i. check if addr is 0 in addition to checking if the address is within the process's address space.
+        c. argptr()
+            i. check if i, an address, is 0 in addition to checking that the pointer lies within process address space.
+    5) vm.c
+        a. inituvm()
+            i. change second parameter of mappages to (void*)PGSIZE, since we do not want to map anything to the first page of the process's address space.
+        b. copyuvm()
+            i. Copy a page starting at PGSIZE instead of 0.
+----------Part3----------
+
 
 // Notable findings
 A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
