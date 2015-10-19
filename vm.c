@@ -342,35 +342,19 @@ bad:
 pde_t*
 cow_copyuvm(pde_t *pgdir, uint sz)
 {
-  pde_t *d;
   pte_t *pte;
-  uint pa, i, flags;
-  char *mem;
-
-  if((d = setupkvm()) == 0)
-    return 0;
+  uint i, flags;
   for(i = PGSIZE; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    flags &= ~PTE_W;
-    if((mem = kalloc()) == 0)
-      goto bad;
-    memmove(mem, (char*)p2v(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
-      goto bad;
+    flags &= ~PTE_W;    
   }
-  return d;
+  return pgdir;
 
-bad:
-  freevm(d);
-  return 0;
 }
-
-
 
 //PAGEBREAK!
 // Map user virtual address to kernel address.
@@ -410,6 +394,45 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
     buf += n;
     va = va0 + PGSIZE;
   }
+  return 0;
+}
+
+// Page Fault Handler
+// addr is the address of the page at which we encountered a page fault
+int
+handle_page_fault(uint addr) 
+{
+  // Walk through pgdir to find
+  int i;
+  pte_t *pte;
+  for(i = PGSIZE; i < proc->sz; i += PGSIZE){
+    if((pte = walkpgdir(proc->pgdir, (void *) i, 0)) == 0)
+      panic("copyuvm: pte should exist");
+    if(!(*pte & PTE_P))
+      panic("copyuvm: page not present");
+    // Translate each pgdir address from v2p,
+    // then check to see if it equals PGROUNDOWN(cr2)
+    // If it does, the we found our page
+    if (v2p(pte) == addr) {
+      // Act upon page fault using pflt_page
+      // Check if pgdir is the parent's pgdir
+      // If so, kalloc a new one for the current process
+      if (proc->pgdir == proc->parent->pgdir) {
+        if ((proc->pgdir = (pde_t *) kalloc()) == 0)
+          panic("copyuvm: cannot kalloc a new pgdir");
+      }
+      // Make copy of this page and set the flag to writeable
+      pte_t * copy;
+      if((copy = (pte_t *) kalloc()) == 0)
+        panic("copyuvm: cannot kalloc a page copy");
+  //          if (mappages(proc->pgdir, (void *)pflt_page, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
+  //          panic("copyuvm: cannot create pagetable");
+      memmove(copy, (void *)addr, PGSIZE);
+      *copy |= PTE_W;
+      break;
+    }
+  }
+
   return 0;
 }
 

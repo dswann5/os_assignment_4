@@ -47,6 +47,16 @@ trap(struct trapframe *tf)
   }
 
   switch(tf->trapno){
+  case T_PGFLT:
+    if (proc != 0 && (tf->cs & 3) == DPL_USER) {
+      proc->tf = tf;
+      // Access address of page fault through cr2 register by rcr2() function
+      //uint pflt_page_addr = PGROUNDDOWN(rcr2());
+      //handle_page_fault(pflt_page_addr);
+    } else {
+      panic("page fault in kernel");
+    }
+    break;
   case T_IRQ0 + IRQ_TIMER:
     if(cpu->id == 0){
       acquire(&tickslock);
