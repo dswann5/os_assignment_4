@@ -25,6 +25,9 @@ Userinit() is called after kinit2() in main(). Upon setting up the first process
 
 Mpmain() is the last thing called in main(). It calls scheduler() to start running processes.
 
+// Virtual Memory Layout
+Each process contains an upper and lower virtual address space mapped to physical addresses for the kernel and user, respectively. Different processes' page tables translate user addresses to different pages of physical memory in order to ensure that each process has private user memory. All mappings in the kernel's virtual space exist so the kernel can run in every process's page table. These mappings are all above KERNBASE, where the virtual addresses KERNBASE:KERNBASE+PHYSTOP to the physical addresses 0:PHYSTOP. The PTE_U flag is not set for the PTEs above KERNBASE, since the user should not be able to access kernel code.
+
 // ctx switching, forking, etc.
 Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. 
 
