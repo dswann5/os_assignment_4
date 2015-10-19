@@ -33,3 +33,10 @@ trapret:
   popl %ds
   addl $0x8, %esp  # trapno and errcode
   iret
+
+// Flush the TLB register
+.globl flush_tlb_all
+flush_tlb_all:
+  movl %cr3, %eax
+  movl %eax, %cr3
+  ret

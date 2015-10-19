@@ -31,6 +31,11 @@ Each process contains an upper and lower virtual address space mapped to physica
 // ctx switching, forking, etc.
 Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. 
 
+// Design Thoughts
+We thought about our reference counter data structure and came up with a few possible solutions:
+1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 3 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table.
+2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page for the list.  
+
 // Modifications
 ----------Part2----------
     1) Makefile
