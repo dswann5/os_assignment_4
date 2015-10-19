@@ -35,8 +35,8 @@ trapret:
   iret
 
 // Flush the TLB register
-.globl flush_tlb_all
-flush_tlb_all:
+.globl flush_tlb
+flush_tlb:
   movl %cr3, %eax
   movl %eax, %cr3
   ret

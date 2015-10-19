@@ -342,17 +342,35 @@ bad:
 pde_t*
 cow_copyuvm(pde_t *pgdir, uint sz)
 {
-  pte_t *pte;
-  uint i, flags;
+//  pte_t *pte;
+//  uint i, flags;
+
+/*
   for(i = PGSIZE; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
     flags = PTE_FLAGS(*pte);
-    flags &= ~PTE_W;    
+    flags &= ~PTE_W;
+    *pte |= flags; 
+    pde_t *new_pgdir;
+    if((new_pgdir = kalloc()) == 0)
+      goto bad;
+    memmove(mem, (char*)p2v(pa), PGSIZE);
+    if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
+      goto bad;
   }
-  return pgdir;
+*/
+  pde_t * new_pgdir;
+  if((new_pgdir = setupkvm()) == 0)
+    return 0;
+  // Just copy pgdir
+/*  if ((new_pgdir = (pde_t *) kalloc()) == 0)
+    panic("cow_copyuvm: cannot kalloc to pgdir");*/
+  memmove(new_pgdir, pgdir, PGSIZE);
+  flush_tlb();
+  return new_pgdir;
 
 }
 
@@ -415,20 +433,16 @@ handle_page_fault(uint addr)
     // If it does, the we found our page
     if (v2p(pte) == addr) {
       // Act upon page fault using pflt_page
-      // Check if pgdir is the parent's pgdir
-      // If so, kalloc a new one for the current process
-      if (proc->pgdir == proc->parent->pgdir) {
-        if ((proc->pgdir = (pde_t *) kalloc()) == 0)
-          panic("copyuvm: cannot kalloc a new pgdir");
-      }
       // Make copy of this page and set the flag to writeable
-      pte_t * copy;
-      if((copy = (pte_t *) kalloc()) == 0)
-        panic("copyuvm: cannot kalloc a page copy");
-  //          if (mappages(proc->pgdir, (void *)pflt_page, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
-  //          panic("copyuvm: cannot create pagetable");
+      pde_t * copy;
+      if ((copy = (pde_t *) kalloc()) == 0)
+        panic("cannot kalloc");
+      memset(copy, 0, PGSIZE);
+      if (mappages(proc->pgdir, (void *)addr, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
+        panic("copyuvm: cannot create pagetable");
       memmove(copy, (void *)addr, PGSIZE);
-      *copy |= PTE_W;
+      *copy |= PTE_W|PTE_U;
+      flush_tlb();
       break;
     }
   }

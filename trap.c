@@ -49,6 +49,7 @@ trap(struct trapframe *tf)
   switch(tf->trapno){
   case T_PGFLT:
     if (proc != 0 && (tf->cs & 3) == DPL_USER) {
+      cprintf("FUCK!!!!\n");
       proc->tf = tf;
       // Access address of page fault through cr2 register by rcr2() function
       //uint pflt_page_addr = PGROUNDDOWN(rcr2());

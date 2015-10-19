@@ -182,4 +182,4 @@ int             handle_page_fault(uint);
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
-void flush_tlb_all (void);
+void flush_tlb (void);
