@@ -78,9 +78,8 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
     if((pte = walkpgdir(pgdir, a, 1)) == 0)
       return -1;
     
-    // No need to panic, as we are remapping on write 
-    //if(*pte & PTE_P)
-    //panic("remap");
+    if(*pte & PTE_P)
+      panic("remap");
     *pte = pa | perm | PTE_P;
     if(a == last)
       break;
@@ -358,9 +357,9 @@ cow_copyuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
  
+    *pte &= ~PTE_W;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-    *pte &= ~PTE_W;
 
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
@@ -417,37 +416,33 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 // Page Fault Handler
 // addr is the address of the page at which we encountered a page fault
 int
-handle_page_fault(uint addr) 
+handle_page_fault(pde_t *pgdir, uint addr) 
 {
   // Walk through pgdir to find the page at the given address 
-  //cprintf("Handling page fault\n");
-  int i;
+  uint pa;
   pte_t *pte;
-  for(i = PGSIZE; i < proc->sz; i += PGSIZE){
-    if((pte = walkpgdir(proc->pgdir, (void *) i, 0)) == 0)
-      panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
+  
+  if((pte = walkpgdir(pgdir, (void *) addr, 0)) == 0)
+      panic("page fault handler: pte should exist");
+  if(!(*pte & PTE_P))
+      panic("page fault handler: page not present");
 
-    //cprintf("Address is %d %d\n", addr, i);
-
-    // Translate each pgdir address from v2p,
-    // then check to see if it equals the closest page to this address
-    // If it does, the we found our page
-    if (i == PGROUNDDOWN(addr)) {
-      // Make copy of this page and set the flag to writeable      
-      cprintf( "I found the page\n");
-      pde_t * copy;
-      if ((copy = (pde_t *) kalloc()) == 0)
-        panic("cannot copy new page for process");
-      memmove(copy, (char *)p2v(i), PGSIZE);
-      *pte = v2p(copy) | PTE_W | PTE_FLAGS(*pte);
-      //if (mappages(proc->pgdir, (void *)addr, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
-      //  panic("copyuvm: cannot create pagetable");
-      flush_tlb();
-      break;
-    }
-  }
+  // If it does, the we found our page
+  // Make copy of this page and set its flag to writeable      
+  cprintf( "I found the page\n");
+  pde_t * copy;
+  if ((copy = (pde_t * )kalloc()) == 0)
+    panic("cannot copy new page for process");
+  pa = PTE_ADDR(*pte); 
+  
+  *pte = v2p(copy) | PTE_W | PTE_FLAGS(*pte);      
+  memmove(copy, (char *)p2v(pa), PGSIZE);
+  
+  // Copy the page into the vm 
+  //if (mappages(proc->pgdir, (void *)addr, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
+  //   panic("copyuvm: cannot create pagetable");
+  flush_tlb();
+  
   return 0;
 }
 

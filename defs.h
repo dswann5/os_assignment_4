@@ -176,7 +176,7 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 // Page fault handler
-int             handle_page_fault(uint);
+int             handle_page_fault(pde_t *pgdir, uint);
 
 
 // number of elements in fixed-size array

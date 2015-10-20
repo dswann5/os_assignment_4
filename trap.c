@@ -51,9 +51,7 @@ trap(struct trapframe *tf)
     if (proc != 0 && (tf->cs & 3) == DPL_USER) {
       proc->tf = tf;
       // Access address of page fault through cr2 register, and handle the fault
-      uint pflt_page_addr = rcr2();
-      //cprintf("address is %d\n", pflt_page_addr);
-      handle_page_fault(pflt_page_addr);
+      handle_page_fault(proc->pgdir, rcr2());
     } else {
       panic("page fault in kernel");
     }
