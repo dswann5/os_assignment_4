@@ -1,0 +1,90 @@
+set e_tooshort 3
+set e_toolong  4
+set e_fail     5
+set e_timeout  12
+
+set pfx "\nTAPME: "
+
+set tname "[lindex $argv 0]";
+
+spawn make CPUS=1 qemu-nox
+
+# Wait for the system to boot
+set timeout 5
+expect {
+  -ex "\n\$ "      {}
+  timeout          { send_user "Failure: time out booting"
+                     exit $e_timeout
+                   }
+}
+
+send "[join $argv]\n"
+
+# Wait for the test to start and tell us how many
+# success lines we should expect
+set timeout 2
+expect {
+  -regex "${pfx}${tname} 1\\.\\.(\\d*)\r"
+    { global ntests
+      set ntests "$expect_out(1,string)"
+    }
+  -ex "${pfx}${tname} Bail out!" 
+    { send_user "Bail out before start\n"
+      exit $e_fail
+    }
+  timeout 
+    { send_user "Failure: time out getting started"
+      exit $e_timeout
+    }
+  eof
+    { send_user "Failure: EOF on TAP stream"
+      exit $e_tooshort
+    }
+}
+
+# Wait for that many tests to pass
+set timeout 10
+for {set this 0} {$this < $ntests} {incr this} {
+  #send_user "===> Waiting: ${this} ${ntests}\n"
+  expect {
+    -ex "${pfx}${tname} #"       { incr this -1 } 
+    -ex "${pfx}${tname} ok"      { }
+    -ex "${pfx}${tname} not ok" 
+      { send_user "Failure in simulation\n"
+        exit $e_fail
+      }
+    -regex "${pfx}${tname} Bail out!.*\n" 
+      { send_user "Bail out in simulation\n"
+        exit $e_fail
+      }
+    -ex "\n$ "
+      { send_user "Failure: prompt after ${this} tests\n"
+        exit $e_tooshort
+      }
+    timeout
+      { send_user "Failure: time out\n"
+        exit $e_timeout
+      }
+    eof
+      { send_user "Failure: EOF on TAP stream"
+        exit $e_tooshort
+      }
+  }
+}
+
+# Hang around for a prompt
+set exitwith 0
+while {1} {
+ set timeout 1
+ expect {
+  -regex "${pfx}${tname} \[^#\]"  { set exitwith $e_toolong }
+  -ex "\n$ "             { break }
+  timeout                { send_user "Failure: prompt time out\n"
+                           exit $e_timeout
+                         }
+  eof                    { send_user "Failure: EOF on TAP stream"
+                           exit $e_tooshort
+                         }
+ }
+}
+exit $exitwith
