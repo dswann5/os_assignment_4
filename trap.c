@@ -51,7 +51,11 @@ trap(struct trapframe *tf)
     if (proc != 0 && (tf->cs & 3) == DPL_USER) {
       proc->tf = tf;
       // Access address of page fault through cr2 register, and handle the fault
-      handle_page_fault(proc->pgdir, rcr2());
+      if (rcr2() < PGSIZE)
+        // Page fault came from null pointer space
+        cprintf("Null pointer trap\n");
+      else
+        handle_page_fault(proc->pgdir, rcr2());
     } else {
       panic("page fault in kernel");
     }

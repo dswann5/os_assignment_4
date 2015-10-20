@@ -415,6 +415,7 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 
 // Page Fault Handler
 // addr is the address of the page at which we encountered a page fault
+// pgdir is the current pgdir of the process from the trap handler
 int
 handle_page_fault(pde_t *pgdir, uint addr) 
 {
