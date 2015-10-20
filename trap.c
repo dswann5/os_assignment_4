@@ -49,11 +49,11 @@ trap(struct trapframe *tf)
   switch(tf->trapno){
   case T_PGFLT:
     if (proc != 0 && (tf->cs & 3) == DPL_USER) {
-      cprintf("FUCK!!!!\n");
       proc->tf = tf;
-      // Access address of page fault through cr2 register by rcr2() function
-      //uint pflt_page_addr = PGROUNDDOWN(rcr2());
-      //handle_page_fault(pflt_page_addr);
+      // Access address of page fault through cr2 register, and handle the fault
+      uint pflt_page_addr = rcr2();
+      //cprintf("address is %d\n", pflt_page_addr);
+      handle_page_fault(pflt_page_addr);
     } else {
       panic("page fault in kernel");
     }

@@ -182,4 +182,5 @@ int             handle_page_fault(uint);
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 
+// Global translation lookaside buffer
 void flush_tlb (void);
