@@ -422,7 +422,10 @@ handle_page_fault(pde_t *pgdir, uint addr)
   // Walk through pgdir to find the page at the given address 
   uint pa;
   pte_t *pte;
-  
+ 
+  if (addr >= KERNBASE || addr < PGSIZE)
+      panic("Invalid pointer\n");
+
   if((pte = walkpgdir(pgdir, (void *) addr, 0)) == 0)
       panic("page fault handler: pte should exist");
   if(!(*pte & PTE_P))
@@ -436,8 +439,8 @@ handle_page_fault(pde_t *pgdir, uint addr)
     panic("cannot copy new page for process");
   pa = PTE_ADDR(*pte); 
   
-  *pte = v2p(copy) | PTE_W | PTE_FLAGS(*pte);      
   memmove(copy, (char *)p2v(pa), PGSIZE);
+  *pte = v2p(copy) | PTE_FLAGS(*pte) | PTE_W;      
   
   // Copy the page into the vm 
   //if (mappages(proc->pgdir, (void *)addr, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
