@@ -62,17 +62,15 @@ We thought about our reference counter data structure and came up with a few pos
             i. change second parameter of mappages to (void*)PGSIZE, since we do not want to map anything to the first page of the process's address space.
         b. copyuvm()
             i. Copy a page starting at PGSIZE instead of 0.
+
 ----------Part3----------
 
+// Initial design musings
+We realized that we must store the reference count (up to NPROC possibilities) of each page somehow in order to determine whether it is at 1 (set it to read-only) or at zero (free the page from memory, aka add to free list). Initially we thought we could store a 3-bit reference count in the pte's available bits itself, but then realized that NPROC could increase, and thus needed a larger space to store the possible values.
+
+We decided on a patented Big Array of 32-bit Integers technique, which is sized by calculating PHYSTOP/PGSIZE. Each index in the array corresponds to a page's reference. This is not entirely ideal, as we need exactly 14 pages of memory to store all 32-bit ints per page table entry. We then realized that with multiple CPUs, all operations (including lookup) on this array must be atomic in order to prevent race conditions, resulting in a necessary static lock on the static reference count array. 
 
 // Notable findings
 A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
 
-
-
-------------------------------------------------------------------------------
-Part 2: NO moar NULL
-
-------------------------------------------------------------------------------
-Part 3: Forking Moo Cows
 
