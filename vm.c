@@ -14,7 +14,7 @@ static pde_t *kpgdir;  // for use in scheduler()
 // Reference counter for pages, with each index corresponding to a page
 // Total size is 32*234881024/4096 = 57344 bits = 14 pages
 // Needs to be access via a lock after initialization, as it is a shared data struture
-uint ref_count[PHYSTOP/PGSIZE]= {0};
+uint ref_count[PHYSTOP/PGSIZE] = {0};
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -248,9 +248,9 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     memset(mem, 0, PGSIZE);
     if (mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
       panic("allocuvm: cannot create pagetable");
+    ref_count[v2p(mem)/PGSIZE] = 1;
   }
   // Increment ref count of page at this address
-  ref_count[v2p(mem)/PGSIZE]++;
   return newsz;
 }
 
@@ -261,7 +261,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 int
 deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
-  //TODO: if ref count for this page is zero, free it. otherwise don't
+  //If ref count for this page is zero, free it. otherwise just decrement it
   pte_t *pte;
   uint a, pa;
 
@@ -374,11 +374,12 @@ cow_copyuvm(pde_t *pgdir, uint sz)
 
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
+    
+    ref_count[pa/PGSIZE]++;
     flush_tlb();
   }
  
   // Increment ref count for the page at pa 
-  ref_count[pa/PGSIZE]++;
   return d;
 
 bad:
@@ -452,19 +453,27 @@ handle_page_fault(pde_t *pgdir, uint addr)
   if(!(*pte & PTE_P))
       panic("page fault handler: page not present");
 
-  // If it does, the we found our page
-  // Make copy of this page and set its flag to writeable      
-  pde_t * copy;
-  if ((copy = (pde_t * )kalloc()) == 0)
-    panic("cannot copy new page for process");
   pa = PTE_ADDR(*pte); 
+  // If there is only one reference to this page, set it to writable  
+  if (ref_count[pa/PGSIZE] == 1) {
+      *pte |= PTE_W;
+      *pte &= ~PTE_COW;
+  }
+  else {
+      // Make copy of this page and set its flag to writeable      
+      pde_t * copy;
+      if ((copy = (pde_t * )kalloc()) == 0)
+        panic("cannot copy new page for process");
   
-  memmove(copy, (char *)p2v(pa), PGSIZE);
-  *pte = v2p(copy) | PTE_FLAGS(*pte) | PTE_W;      
+      memmove(copy, (char *)p2v(pa), PGSIZE);
+      *pte = v2p(copy) | PTE_FLAGS(*pte) | PTE_W;   
   
-  // Copy the page into the vm 
-  //if (mappages(proc->pgdir, (void *)addr, PGSIZE, v2p(copy), PTE_W|PTE_U) < 0)
-  //   panic("copyuvm: cannot create pagetable");
+      // Set ref count of this new page to one
+      ref_count[v2p(copy)/PGSIZE] = 1;
+      // Remove cow bit here 
+  }
+  
+  // Flush the address cache
   flush_tlb();
   
   return 0;
