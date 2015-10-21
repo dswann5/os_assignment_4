@@ -13,8 +13,9 @@ static pde_t *kpgdir;  // for use in scheduler()
 
 // Reference counter for pages, with each index corresponding to a page
 // Total size is 32*234881024/4096 = 57344 bits = 14 pages
-// Needs to be access via a lock after initialization, as it is a shared data struture
+// Needs to be access via a lock after initialization, as it is a shared resource
 uint ref_count[PHYSTOP/PGSIZE] = {0};
+struct spinlock ref_lock;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -189,6 +190,9 @@ inituvm(pde_t *pgdir, char *init, uint sz)
 {
   char *mem;
 
+  // Initialize the page reference lock
+  initlock(&ref_lock, "page reference counter");
+
   if(sz >= PGSIZE)
     panic("inituvm: more than a page");
   if ((mem = kalloc()) == 0)
@@ -248,7 +252,10 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     memset(mem, 0, PGSIZE);
     if (mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
       panic("allocuvm: cannot create pagetable");
+    
+    acquire(&ref_lock);
     ref_count[v2p(mem)/PGSIZE] = 1;
+    release(&ref_lock);
   }
   // Increment ref count of page at this address
   return newsz;
@@ -277,12 +284,15 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
+      
+      acquire(&ref_lock);
       ref_count[pa/PGSIZE]--; 
       if (ref_count[pa/PGSIZE] == 0) {
         char *v = p2v(pa);
         kfree(v);
         *pte = 0;
       }
+      release(&ref_lock);
     }
   }
   return newsz;
@@ -375,11 +385,15 @@ cow_copyuvm(pde_t *pgdir, uint sz)
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
     
+    // Increment ref count for this page, as it should always be read-only 
+    acquire(&ref_lock);
     ref_count[pa/PGSIZE]++;
+    release(&ref_lock);
+    
+    // Clear address cache
     flush_tlb();
   }
  
-  // Increment ref count for the page at pa 
   return d;
 
 bad:
@@ -454,7 +468,9 @@ handle_page_fault(pde_t *pgdir, uint addr)
       panic("page fault handler: page not present");
 
   pa = PTE_ADDR(*pte); 
+
   // If there is only one reference to this page, set it to writable  
+  acquire(&ref_lock);
   if (ref_count[pa/PGSIZE] == 1) {
       *pte |= PTE_W;
       *pte &= ~PTE_COW;
@@ -473,6 +489,8 @@ handle_page_fault(pde_t *pgdir, uint addr)
       // Remove cow bit here 
   }
   
+  release(&ref_lock);
+
   // Flush the address cache
   flush_tlb();
   
