@@ -10,6 +10,10 @@
 extern char data[];  // defined by kernel.ld
 static pde_t *kpgdir;  // for use in scheduler()
 
+// Reference counter for pages, with each index corresponding to a page
+// Total size is 32*234881024/4096 = 57344 bits = 14 pages
+uint ref_count[PHYSTOP/PGSIZE] = {0};
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -243,6 +247,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if (mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
       panic("allocuvm: cannot create pagetable");
   }
+  // Increment ref count of page at this address
+  ref_count[v2p(mem)/PGSIZE]++;
   return newsz;
 }
 
@@ -269,9 +275,12 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
-      char *v = p2v(pa);
-      kfree(v);
-      *pte = 0;
+      ref_count[pa/PGSIZE]--; 
+      if (ref_count[pa/PGSIZE] == 0) {
+        char *v = p2v(pa);
+        kfree(v);
+        *pte = 0;
+      }
     }
   }
   return newsz;
@@ -365,6 +374,9 @@ cow_copyuvm(pde_t *pgdir, uint sz)
       goto bad;
     flush_tlb();
   }
+ 
+  // Increment ref count for the page at pa 
+  ref_count[pa/PGSIZE]++;
   return d;
 
 bad:
@@ -422,9 +434,13 @@ handle_page_fault(pde_t *pgdir, uint addr)
   // Walk through pgdir to find the page at the given address 
   uint pa;
   pte_t *pte;
- 
-  if (addr >= KERNBASE || addr < PGSIZE)
-      panic("Invalid pointer\n");
+
+  // If this address is a null pointer or in the kernel, throw trap 
+  if (addr >= KERNBASE || addr < PGSIZE) {
+      cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
+      proc->tf->trapno, cpu->id, proc->tf->eip, rcr2());
+      panic("trap");
+  } 
 
   if((pte = walkpgdir(pgdir, (void *) addr, 0)) == 0)
       panic("page fault handler: pte should exist");
@@ -433,7 +449,6 @@ handle_page_fault(pde_t *pgdir, uint addr)
 
   // If it does, the we found our page
   // Make copy of this page and set its flag to writeable      
-  cprintf( "I found the page\n");
   pde_t * copy;
   if ((copy = (pde_t * )kalloc()) == 0)
     panic("cannot copy new page for process");
