@@ -28,12 +28,10 @@ int main(int argc, char **argv) {
   int f1 = fork();
   TEST_EXIT_IF(f1 < 0, "fork fail");
   if(f1 == 0) {
-    printf(1, "Child\n");
     sleep(sd);
     READ_TEST("child");
     TEST_EXIT_IF(wait() >= 0, "child wait ok?");
   } else {
-    printf(1, "Parent\n");
     sleep(2 - sd);
     READ_TEST("parent");
     TEST_EXIT_IF(wait() != f1, "parent wait");
