@@ -15,7 +15,7 @@ static pde_t *kpgdir;  // for use in scheduler()
 // Total size is 32*234881024/4096 = 57344 bits = 14 pages
 // Needs to be access via a lock after initialization, as it is a shared resource
 static uint ref_count[PHYSTOP/PGSIZE] = {0};
-struct spinlock ref_lock;
+static struct spinlock ref_lock;
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
