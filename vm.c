@@ -289,7 +289,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       ref_count[pa/PGSIZE]--;
       if (ref_count[pa/PGSIZE] == 1) {
         *pte &= ~PTE_W;
-        *pte &= ~PTE_COW;
       } else if (ref_count[pa/PGSIZE] == 0) {
         char *v = p2v(pa);
         kfree(v);
@@ -333,15 +332,13 @@ clearpteu(pde_t *pgdir, char *uva)
   *pte &= ~PTE_U;
 }
 
-// Given a parent process's page table, create a copy
-// of it for a child.
+// Given a parent process's page table, copy the pagedir and tables but not the page frames themselves.
 pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
-  char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -350,42 +347,12 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto bad;
-    memmove(mem, (char*)p2v(pa), PGSIZE);
-    if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
-      goto bad;
-  }
-  return d;
 
-bad:
-  freevm(d);
-  return 0;
-}
-
-// Given a parent process's page table, copy the pagedir and tables but not the page frames themselves.
-pde_t*
-cow_copyuvm(pde_t *pgdir, uint sz)
-{
-  pde_t *d;
-  pte_t *pte;
-  uint pa, i, flags;
-
-  if((d = setupkvm()) == 0)
-    return 0;
-  for(i = PGSIZE; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-      panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
- 
+    // Set read-only flag
     *pte &= ~PTE_W; 
-    *pte |= PTE_COW;
-    pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
     
+    pa = PTE_ADDR(*pte);
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
     
@@ -473,14 +440,14 @@ handle_page_fault(pde_t *pgdir, uint addr)
 
   pa = PTE_ADDR(*pte); 
 
-  if (!(*pte & PTE_COW))
+  // Make page exists
+  if (!(*pte & PTE_P))
     return -1;
 
   // If there is only one reference to this page, set it to readable 
   acquire(&ref_lock);
   if (ref_count[pa/PGSIZE] == 1) {
     *pte &= ~PTE_W;
-    *pte &= ~PTE_COW;
   }
   else {
     // Make copy of this page and set its flag to writeable      
@@ -493,8 +460,6 @@ handle_page_fault(pde_t *pgdir, uint addr)
 
     // Set ref count of this new page to one
     ref_count[v2p(copy)/PGSIZE] = 1;
-    // Remove COW flag 
-    *pte &= ~PTE_COW;
   }
   
   release(&ref_lock);

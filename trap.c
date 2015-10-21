@@ -48,7 +48,7 @@ trap(struct trapframe *tf)
 
   switch(tf->trapno){
   case T_PGFLT:
-    if (proc != 0 && (tf->cs & 3) == DPL_USER) {
+    if (proc != 0) {// && (tf->cs & 3) == DPL_USER) {
       proc->tf = tf;
       // Access address of page fault through cr2 register, and handle the fault
       handle_page_fault(proc->pgdir, rcr2());
