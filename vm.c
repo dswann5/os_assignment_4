@@ -378,10 +378,11 @@ cow_copyuvm(pde_t *pgdir, uint sz)
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
  
-    *pte &= ~PTE_W;
+    *pte &= ~PTE_W; 
+    *pte |= PTE_COW;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
-
+    
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
       goto bad;
     
@@ -469,6 +470,9 @@ handle_page_fault(pde_t *pgdir, uint addr)
 
   pa = PTE_ADDR(*pte); 
 
+  if (!(*pte & PTE_COW))
+      return -1;
+
   // If there is only one reference to this page, set it to writable  
   acquire(&ref_lock);
   if (ref_count[pa/PGSIZE] == 1) {
@@ -486,7 +490,8 @@ handle_page_fault(pde_t *pgdir, uint addr)
   
       // Set ref count of this new page to one
       ref_count[v2p(copy)/PGSIZE] = 1;
-      // Remove cow bit here 
+      // Remove COW flag 
+      *pte &= ~PTE_COW;
   }
   
   release(&ref_lock);
