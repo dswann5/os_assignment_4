@@ -53,7 +53,10 @@ trap(struct trapframe *tf)
      // Access address of page fault through cr2 register, and handle the fault
       handle_page_fault(proc->pgdir, rcr2());
     } else {
-      panic("page fault in kernel");
+       // In kernel, it must be our mistake.
+      cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
+              tf->trapno, cpu->id, tf->eip, rcr2());
+      panic("trap");
     }
     break;
   case T_IRQ0 + IRQ_TIMER:

@@ -20,13 +20,14 @@ int main(int argc, char *argv[])
     int fd = open("test.txt", O_CREATE|O_RDWR);
     if (write(fd, "aaaaaaaaaa", 10) != 10)
         printf(1, "Write to file failed\n");
-    // Test null pointer 
+
+    // Test null pointer syscalls
     char * buf = 0;
-    printf(1, "Null buffer addr read returned %d\n", read(fd, buf, 1));       
+    printf(1, "Read of null buffer at addr %d returned %d, should fail\n", buf, read(fd, buf, 1));       
     buf = (void*)PGSIZE-1;
-    printf(1, "Null buffer addr read returned %d\n", read(fd, buf, 1));       
+    printf(1, "Read of null buffer at addr %d returned %d, should fail\n", buf, read(fd, buf, 1));       
     buf = (void*)PGSIZE;
-    printf(1, "Null buffer addr read returned %d\n", read(fd, buf, 1));       
+    printf(1, "Read of null buffer at addr %d returned %d, should be 0\n", buf, read(fd, buf, 1));       
 
     fd = open((void*)0, O_CREATE|O_RDWR);
     

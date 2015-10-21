@@ -6,13 +6,15 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
+#include "spinlock.h"
 
 extern char data[];  // defined by kernel.ld
 static pde_t *kpgdir;  // for use in scheduler()
 
 // Reference counter for pages, with each index corresponding to a page
 // Total size is 32*234881024/4096 = 57344 bits = 14 pages
-uint ref_count[PHYSTOP/PGSIZE] = {0};
+// Needs to be access via a lock after initialization, as it is a shared data struture
+uint ref_count[PHYSTOP/PGSIZE]= {0};
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -435,11 +437,14 @@ handle_page_fault(pde_t *pgdir, uint addr)
   uint pa;
   pte_t *pte;
 
-  // If this address is a null pointer or in the kernel, throw trap 
+  // If this address is a null pointer or in the kernel, notify trap and kill process 
   if (addr >= KERNBASE || addr < PGSIZE) {
-      cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
-      proc->tf->trapno, cpu->id, proc->tf->eip, rcr2());
-      panic("trap");
+    // In user space, assume process misbehaved.
+    cprintf("pid %d %s: trap %d err %d on cpu %d "
+            "eip 0x%x addr 0x%x--kill proc\n",
+            proc->pid, proc->name, proc->tf->trapno, proc->tf->err, cpu->id, proc->tf->eip, rcr2());
+    proc->killed = 1;
+    return -1;
   } 
 
   if((pte = walkpgdir(pgdir, (void *) addr, 0)) == 0)
