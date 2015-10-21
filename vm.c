@@ -286,8 +286,11 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         panic("kfree");
       
       acquire(&ref_lock);
-      ref_count[pa/PGSIZE]--; 
-      if (ref_count[pa/PGSIZE] == 0) {
+      ref_count[pa/PGSIZE]--;
+      if (ref_count[pa/PGSIZE] == 1) {
+        *pte &= ~PTE_W;
+        *pte &= ~PTE_COW;
+      } else if (ref_count[pa/PGSIZE] == 0) {
         char *v = p2v(pa);
         kfree(v);
         *pte = 0;
@@ -464,34 +467,34 @@ handle_page_fault(pde_t *pgdir, uint addr)
   } 
 
   if((pte = walkpgdir(pgdir, (void *) addr, 0)) == 0)
-      panic("page fault handler: pte should exist");
+    panic("page fault handler: pte should exist");
   if(!(*pte & PTE_P))
-      panic("page fault handler: page not present");
+    panic("page fault handler: page not present");
 
   pa = PTE_ADDR(*pte); 
 
   if (!(*pte & PTE_COW))
-      return -1;
+    return -1;
 
-  // If there is only one reference to this page, set it to writable  
+  // If there is only one reference to this page, set it to readable 
   acquire(&ref_lock);
   if (ref_count[pa/PGSIZE] == 1) {
-      *pte |= PTE_W;
-      *pte &= ~PTE_COW;
+    *pte &= ~PTE_W;
+    *pte &= ~PTE_COW;
   }
   else {
-      // Make copy of this page and set its flag to writeable      
-      pde_t * copy;
-      if ((copy = (pde_t * )kalloc()) == 0)
-        panic("cannot copy new page for process");
-  
-      memmove(copy, (char *)p2v(pa), PGSIZE);
-      *pte = v2p(copy) | PTE_FLAGS(*pte) | PTE_W;   
-  
-      // Set ref count of this new page to one
-      ref_count[v2p(copy)/PGSIZE] = 1;
-      // Remove COW flag 
-      *pte &= ~PTE_COW;
+    // Make copy of this page and set its flag to writeable      
+    pde_t * copy;
+    if ((copy = (pde_t * )kalloc()) == 0)
+      panic("cannot copy new page for process");
+
+    memmove(copy, (char *)p2v(pa), PGSIZE);
+    *pte = v2p(copy) | PTE_FLAGS(*pte) | PTE_W;   
+
+    // Set ref count of this new page to one
+    ref_count[v2p(copy)/PGSIZE] = 1;
+    // Remove COW flag 
+    *pte &= ~PTE_COW;
   }
   
   release(&ref_lock);

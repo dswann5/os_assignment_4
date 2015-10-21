@@ -50,7 +50,7 @@ trap(struct trapframe *tf)
   case T_PGFLT:
     if (proc != 0 && (tf->cs & 3) == DPL_USER) {
       proc->tf = tf;
-     // Access address of page fault through cr2 register, and handle the fault
+      // Access address of page fault through cr2 register, and handle the fault
       handle_page_fault(proc->pgdir, rcr2());
     } else {
        // In kernel, it must be our mistake.

@@ -157,8 +157,8 @@ mkfs: mkfs.c fs.h
 .PRECIOUS: %.o
 
 UPROGS=\
-	_318fork1\
-	_318forkread\
+	_318_fork_1\
+	_318_forkread\
 	_cat\
 	_echo\
 	_forktest\
@@ -242,7 +242,7 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 # check in that version.
 
 EXTRA=\
-	318fork1.c 318forkread.c mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
+	318_fork_1.c 318_forkread.c mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c nulltest.c rm.c stressfs.c usertests.c wc.c zombie.c\
 	printf.c umalloc.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
