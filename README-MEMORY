@@ -29,15 +29,13 @@ Mpmain() is the last thing called in main(). It calls scheduler() to start runni
 Each process contains an upper and lower virtual address space mapped to physical addresses for the kernel and user, respectively. Different processes' page tables translate user addresses to different pages of physical memory in order to ensure that each process has private user memory. All mappings in the kernel's virtual space exist so the kernel can run in every process's page table. These mappings are all above KERNBASE, where the virtual addresses KERNBASE:KERNBASE+PHYSTOP to the physical addresses 0:PHYSTOP. The PTE_U flag is not set for the PTEs above KERNBASE, since the user should not be able to access kernel code.
 
 // ctx switching, forking, etc.
-Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. 
+Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current state of the code of the current process in order for the child to execute on. Copyuvm() calls setupkvm() which sets up the kernel portion of the user address space. Then, given the sz of the parent's process table, we loops through increments of PAGESIZE in order to copy all the pages for the child. Walkpgdir() checks to find the page table entry in the parent's pgdira and returns it to copyuvm(). We then extract the physical address of the table and its flags and then perform mappages() on a kalloc'd page serving as a copy for the child. This essentially copies over the parent's page into the child's copy. For our assignment, we have to make this more efficient, because who is to say the child will even write to the page? We only want to copy over the pages that the child will write to. We will make our own version of copyuvm() to handle this.
 
-// Design Thoughts
-We thought about our reference counter data structure and came up with a few possible solutions:
-1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 4 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table. Although NPROC could potentially be more than 64, which would be bad...this is probably not the best option.
-2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page of memory for the list. BUT, since this is a shared resource we will need to implement locking logic around it.
+// Notable findings
+A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
 
+----------Part2 Design----------
 // Modifications
-----------Part2----------
     1) Makefile
         a. Changed location of where code starts in the user address space for initcode. Instead of 0, start at 0x1000, which is the size of one page.
         b. Changed location where code starts in the user address space for all user programs (ULIB). Instead of 0, start at 0x1000.
@@ -63,14 +61,20 @@ We thought about our reference counter data structure and came up with a few pos
         b. copyuvm()
             i. Copy a page starting at PGSIZE instead of 0.
 
-----------Part3----------
+----------Part3 Design----------
+// Design Thoughts
+We thought about our reference counter data structure and came up with a few possible solutions:
+1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 4 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table. Although NPROC could potentially be more than 64, which would be bad...this is probably not the best option.
+2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page of memory for the list. BUT, since this is a shared resource we will need to implement locking logic around it.
 
-// Initial design musings
+// Modifications
+
+Part 2: NO moar NULL
+
+Part 3: Forking Moo Cow
+// Realizations 
 We realized that we must store the reference count (up to NPROC possibilities) of each page somehow in order to determine whether it is at 1 (set it to read-only) or at zero (free the page from memory, aka add to free list). Initially we thought we could store a 3-bit reference count in the pte's available bits itself, but then realized that NPROC could increase, and thus needed a larger space to store the possible values.
 
 We decided on a patented Big Array of 32-bit Integers technique, which is sized by calculating PHYSTOP/PGSIZE. Each index in the array corresponds to a page's reference. This is not entirely ideal, as we need exactly 14 pages of memory to store all 32-bit ints per page table entry. We then realized that with multiple CPUs, all operations (including lookup) on this array must be atomic in order to prevent race conditions, resulting in a necessary static lock on the static reference count array. 
-
-// Notable findings
-A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
 
 
