@@ -35,6 +35,19 @@ Upon fork()ing, fork() (2554) calls copyuvm() (2564) which copies the current st
 A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the nature of page addressing. For a single machine, there are 2^10 possible page directory entries. And for each page directory entry pointing to a page table, there are 2^10 page table entries possible. 2^10*2^10*4096 = 4294967296 bytes = 4 GB, where 4096 is the size of a page. This is representative of the preconceived notion that most 32-bit machines can only have 4GB of memory.
 
 ----------Part2 Design----------
+// Design thoughts
+We essentially want to add an extra page to the bottom of the user address space. So upon initializing a process, we'll have to create some offsets of 4096 bytes (0x1000). Also, we must do some checks in syscalls that may try to access an address below 4096 bytes, like fetchint(), argptr(), etc. We figure that this part will not involve any additional data structures since all we're doing is changing certain values related to the process. 
+
+----------Part3 Design----------
+// Design Thoughts
+We thought about our reference counter data structure and came up with a few possible solutions:
+1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 4 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table. Although NPROC could potentially be more than 64, which would be bad...this is probably not the best option.
+2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page of memory for the list. BUT, since this is a shared resource we will need to implement locking logic around it.
+
+Part 2: NO moar NULL
+// Realizations
+We at one point forgot to set the p->sz to 2*PGSIZE since we've added a page to the bottom of user address space. This shouldn't have been a surprising aspect -- we just forgot.
+
 // Modifications
     1) Makefile
         a. Changed location of where code starts in the user address space for initcode. Instead of 0, start at 0x1000, which is the size of one page.
@@ -61,20 +74,15 @@ A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the na
         b. copyuvm()
             i. Copy a page starting at PGSIZE instead of 0.
 
-----------Part3 Design----------
-// Design Thoughts
-We thought about our reference counter data structure and came up with a few possible solutions:
-1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 4 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table. Although NPROC could potentially be more than 64, which would be bad...this is probably not the best option.
-2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page of memory for the list. BUT, since this is a shared resource we will need to implement locking logic around it.
-
-// Modifications
-
-Part 2: NO moar NULL
-
 Part 3: Forking Moo Cow
 // Realizations 
 We realized that we must store the reference count (up to NPROC possibilities) of each page somehow in order to determine whether it is at 1 (set it to read-only) or at zero (free the page from memory, aka add to free list). Initially we thought we could store a 3-bit reference count in the pte's available bits itself, but then realized that NPROC could increase, and thus needed a larger space to store the possible values.
 
 We decided on a patented Big Array of 32-bit Integers technique, which is sized by calculating PHYSTOP/PGSIZE. Each index in the array corresponds to a page's reference. This is not entirely ideal, as we need exactly 14 pages of memory to store all 32-bit ints per page table entry. We then realized that with multiple CPUs, all operations (including lookup) on this array must be atomic in order to prevent race conditions, resulting in a necessary static lock on the static reference count array. 
 
+Upon modifying copyuvm, we were almost certain that our implementation was correct. We spent hours trying to debug this. Although we were able to start up xv6, running anything from sh hung after execution. It turns out we needed to implement our reference counter functionality in order for this to work. 
 
+// Modifications
+    1) trap.c
+        a. trap()
+            i. We add a case to the switch statement that checks for specific types of trap codes. Specifically, we add the switch 
