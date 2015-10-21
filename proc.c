@@ -248,10 +248,8 @@ wait(void)
       release(&ptable.lock);
       return -1;
     }
-    cprintf("before sleep() in wait()\n");
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(proc, &ptable.lock);  //DOC: wait-sleep
-    cprintf("after sleep() in wait()\n");
   }
 }
 
