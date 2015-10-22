@@ -48,6 +48,7 @@ We thought about our reference counter data structure and came up with a few pos
 1. Somehow include the reference counter in the unused bits of the pte_t struct - but there are only 4 bits available according to the documentation! We want to potentially store 2^6 == 64 (NPROC) possibilities each of our counters, as there can only be up to NPROC references to one page table. Although NPROC could potentially be more than 64, which would be bad...this is probably not the best option.
 2. Allocate a data structure to hold each reference counter, e.g. a linked list of references. This would be memory-efficient, as we only hold a page of memory for the list. BUT, since this is a shared resource we will need to implement locking logic around it.
 
+---------------------------------------------------------------------------------------------------------
 Part 2: NO moar NULL
 // Realizations
 We at one point forgot to set the p->sz to 2*PGSIZE since we've added a page to the bottom of user address space. This shouldn't have been a surprising aspect -- we just forgot.
@@ -118,3 +119,6 @@ NWF's fork_read test also screwed us up, as we initially thought the kernel woul
             iii. We find the pte of the address using walkpgdir and check if the pte is valid and if it is present (PTE_P).
             iv. If there's only one reference to this page, we set it to readable. Otherwise, we make a copy of this page and set its flag to writeable.
             v. We flush the address cache (flush_tlb()) at the end and return 0.
+
+// Additional Comments
+Our usertests hangs in usertests involving file IO. We don't know why this is. But, what we do know is that our system is caught in a trap loop, where trap is called successively until we kill the program. This is strange since we do pass NWF's file forkread test.
