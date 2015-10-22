@@ -232,7 +232,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
 int
 allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
-  // TODO: update reference count when allocing new page
   char *mem;
   uint a;
 
@@ -252,12 +251,12 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     memset(mem, 0, PGSIZE);
     if (mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U) < 0)
       panic("allocuvm: cannot create pagetable");
-    
+  
+    // Increment ref count of page at this address
     acquire(&ref_lock);
     ref_count[v2p(mem)/PGSIZE] = 1;
     release(&ref_lock);
   }
-  // Increment ref count of page at this address
   return newsz;
 }
 
@@ -268,7 +267,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 int
 deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
-  //If ref count for this page is zero, free it. otherwise just decrement it
   pte_t *pte;
   uint a, pa;
 
@@ -284,7 +282,9 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       pa = PTE_ADDR(*pte);
       if(pa == 0)
         panic("kfree");
-      
+
+      // After decrementing page, check to see if has a singular reference and set read-only
+      // If ref count for this page is zero, free ii
       acquire(&ref_lock);
       ref_count[pa/PGSIZE]--;
       if (ref_count[pa/PGSIZE] == 1) {
@@ -439,10 +439,6 @@ handle_page_fault(pde_t *pgdir, uint addr)
     panic("page fault handler: page not present");
 
   pa = PTE_ADDR(*pte); 
-
-  // Make page exists
-  if (!(*pte & PTE_P))
-    return -1;
 
   // If there is only one reference to this page, set it to readable 
   acquire(&ref_lock);

@@ -38,6 +38,10 @@ A 32-bit machine running xv6 can only have 4 GB of memory. This is due to the na
 // Design thoughts
 We essentially want to add an extra page to the bottom of the user address space. So upon initializing a process, we'll have to create some offsets of 4096 bytes (0x1000). Also, we must do some checks in syscalls that may try to access an address below 4096 bytes, like fetchint(), argptr(), etc. We figure that this part will not involve any additional data structures since all we're doing is changing certain values related to the process. 
 
+We will test this by attempting to deference an address at 0, PGSIZE-1, and PGSIZE. Our null pointer handler should fail to dereference the address at 0 and PGSIZE-1, and succeed the dereference at PGSIZE. In addition, we must check for a null pointer passed to a syscall is handled correctly. Thus we will attempt to read into a buffer at addresses 0, PGSIZE-1, and PGSIZE. Read should fail gracefully (return -1) on the first two cases, and succeed to read on the third.
+
+The included nulltest.c file performs these checks of null pointers. 
+
 ----------Part3 Design----------
 // Design Thoughts
 We thought about our reference counter data structure and came up with a few possible solutions:
@@ -74,13 +78,19 @@ We at one point forgot to set the p->sz to 2*PGSIZE since we've added a page to 
         b. copyuvm()
             i. Copy a page starting at PGSIZE instead of 0.
 
+---------------------------------------------------------------------------------------------------------
+
 Part 3: Forking Moo Cow
 // Realizations 
-We realized that we must store the reference count (up to NPROC possibilities) of each page somehow in order to determine whether it is at 1 (set it to read-only) or at zero (free the page from memory, aka add to free list). Initially we thought we could store a 3-bit reference count in the pte's available bits itself, but then realized that NPROC could increase, and thus needed a larger space to store the possible values.
+We realized that we must store the reference count (up to NPROC possibilities) of each page somehow in order to determine whether it is at 1 (set it to read-only) or at zero (free the page from memory, aka add to free list). Initially we thought we could store a reference count in the pte's available bits itself, but then realized that NPROC could increase, and thus needed a larger space to store the possible values. The linked list we discussed earlier would require some dynamic memory allocation, but would theoretically take longer to traverse than a normal array. A static array of reference counters with no kalloc() required seemed to be the best option at this point.
 
-We decided on a patented Big Array of 32-bit Integers technique, which is sized by calculating PHYSTOP/PGSIZE. Each index in the array corresponds to a page's reference. This is not entirely ideal, as we need exactly 14 pages of memory to store all 32-bit ints per page table entry. We then realized that with multiple CPUs, all operations (including lookup) on this array must be atomic in order to prevent race conditions, resulting in a necessary static lock on the static reference count array. 
+We decided on a patented Big Array of 32-bit Integers technique, which is sized by calculating PHYSTOP/PGSIZE. Each index in the array corresponds to a page's reference. This is not entirely ideal, as we need exactly 14 pages of memory to store all 32-bit ints per page table entry. We then realized that with multiple CPUs, all operations (including lookup) on this array must be atomic in order to prevent race conditions, resulting in a necessary static lock on the static reference count array.
 
-Upon modifying copyuvm, we were almost certain that our implementation was correct. We spent hours trying to debug this. Although we were able to start up xv6, running anything from sh hung after execution. It turns out we needed to implement our reference counter functionality in order for this to work. 
+After some discussion in class, we also realized that we must flush the TLB after every page mutation, which essentially involved reloading the cr3 register according to online documentation. We added a small global x86 function flush_tlb() to trapasm.S in order to do so. 
+
+Upon modifying copyuvm, we were almost certain that our implementation was correct. We spent hours trying to debug this. Although we were able to start up xv6, running anything from sh hung after execution. It turns out we needed to implement our reference counter functionality in order for this to work.
+
+NWF's fork_read test also screwed us up, as we initially thought the kernel would never try to access userspace. We had a condional that checked for DPL_USER != 0 in our page fault trap handler, thus we were failing to handle the situation where the kernel pagefaulted when attempting to touch userspace. After we removed that conditional, NWF's tests worked as expected and we were happy.
 
 // Modifications
     1) trap.c
