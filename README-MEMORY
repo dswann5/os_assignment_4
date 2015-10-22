@@ -95,4 +95,26 @@ NWF's fork_read test also screwed us up, as we initially thought the kernel woul
 // Modifications
     1) trap.c
         a. trap()
-            i. We add a case to the switch statement that checks for specific types of trap codes. Specifically, we add the switch 
+            i. We add a case for T_PGFLT, the page fault trap code, to the switch statement that checks for specific types of trap codes. 
+    2) trapasm.S
+        a. flush_tlb
+            i. We want to flush the tranlsation lookaside buffer which caches addresses per CPU.
+    3) vm.c
+        a. ref_count
+            i. The ref_count is a essentially a 14-page long array that holds counts of processes referencing a specific page table entry. We need this in order to know when to change the PTE_W flag.
+        b. ref_lock
+            i. We need to lock our ref_count array because processes could potentially be contending for that resource.
+        c. allocuvm()
+            i. we want to set the ref_count for a newly allocated page to 1.
+        d. deallocuvm()
+            i. this is essentially the inverse of allocuvm() -- we wish to decrement the ref_count of the specific page being freed from the ref_count array.
+            ii. We also want to check if the ref_count of the page is 1. If so, the writeable flag must be turned off. If 0, then we free the address of the page and set the pte to null.
+        e. copyuvm()
+            i. When we are in copyuvm() we want to set the flag of the pte we are copying to read-only, which means zeroing out the Writable flag. We take the physical address of that and use mappages() to map the contents of pte to our copy of the page table entry. We increase the ref_count for this page since another prrocess is going to use it.
+            ii. We flush_tlb() at the end (described above in point (2))
+        f. handle_page_fault()
+            i. This is called from trap.c in our switch case for a page fault.
+            ii. We first check of the address given by rcr2() in trap.c is a valid user address.
+            iii. We find the pte of the address using walkpgdir and check if the pte is valid and if it is present (PTE_P).
+            iv. If there's only one reference to this page, we set it to readable. Otherwise, we make a copy of this page and set its flag to writeable.
+            v. We flush the address cache (flush_tlb()) at the end and return 0.
